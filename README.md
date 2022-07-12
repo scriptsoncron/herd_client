@@ -1,8 +1,8 @@
 # HERD Python (3.8+) Client
 
-The script simplifies interacting with the HERD API for uploading files, searching by SHA256 hashes, and downloading reports. **ONLY SHA256 SUPPORTED**.
+The script simplifies interacting with the HERD API for detonating files within the HERD sandbox, searching for results by a SHA256 hash, and downloading sandbox reports. **ONLY SHA256 SUPPORTED**.
 
-DM for API access [@HerdSecurity](https://twitter.com/HerdSecurity)
+Slide into our DMs [@HerdSecurity](https://twitter.com/HerdSecurity) for API access 
 
 ---
 ## Install
@@ -23,7 +23,6 @@ Arguments:
   -t , --type       Output options: all, static, dynamic, emulation; Default: all
   -o, --output      Writes results into separate json files (<sha>.json)
   -k , --key        REQUIRED API Key
-  -f, --force       Force re-upload
 ```
 ---
 
@@ -31,11 +30,6 @@ Arguments:
 **Detonate File**
 ```
 herding.py -k <key> -x Installer.exe
-```
-
-**Force Re-Detonation File**
-```
-herding.py -k <key> -x Installer.exe -f
 ```
 
 **Detonate Directory (of files)**
@@ -56,6 +50,7 @@ herding.py -k <key> -s hashes.txt
 ```
 
 **Download (All) Results**
+> All output goes to a json file
 ```
 herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o
 ```
