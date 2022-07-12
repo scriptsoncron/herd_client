@@ -1,6 +1,4 @@
-# HERD CLI tool
-# running asyncio for asynchronous api requests
-# https://blog.jonlu.ca/posts/async-python-http
+# HERD Python Client
 
 import sys
 import os
