@@ -95,7 +95,7 @@ class Herding:
             await asyncio.gather(*(get(sha) for sha in self.search_results['missing']))
         await session.close()
 
-    @timing
+    # @timing
     def detonate(self):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.file_upload())
@@ -118,11 +118,14 @@ class Herding:
                 try:
                     obj = json.loads(await response.read())
                     if 'error' not in obj:
-                        if self.force == 'true':
-                            self.search_results['missing'].append(sha)
-                        else:
-                            self.search_results['found'].append(sha[0])
+                        if 'message' in obj:
                             self.reports[sha[0]] = obj
+                        else:
+                            if self.force == 'true':
+                                self.search_results['missing'].append(sha)
+                            else:
+                                self.search_results['found'].append(sha[0])
+                                self.reports[sha[0]] = obj
                     else:
                         self.search_results['missing'].append(sha)
                 except json.decoder.JSONDecodeError:
@@ -131,16 +134,13 @@ class Herding:
         await asyncio.gather(*(get(sha) for sha in self.sha_list))
         await session.close()
 
-    @timing
+    # @timing
     def search(self):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.hash_lookup())
         # self.conn.close()
 
-        print(f"\nSearched {len(self.sha_list)} SHA256 with {len(self.search_results['found'])} found")
-
-        # summary = ''.join([f"\t{x} :: {list(self.search_results[x].keys())}\n" for x in self.search_results])
-        # print(summary)
+        print(f"\n[+] Searched {len(self.sha_list)} SHA256 and {len(self.search_results['found'])} found\n")
 
     def gather_triage_list(self):
         # list of file paths in directories
@@ -175,10 +175,15 @@ class Herding:
 
     def write(self):
         for sha in self.reports:
-            with open(f'{sha}.json', 'w') as f:
-                json.dump(self.reports[sha], f)
+            if 'message' in self.reports[sha]:
+                if self.reports[sha]['message'] == 'Forbidden':
+                    print('[-] Wrong API Key\n')
+            else:
+                with open(f'{sha}.json', 'w') as f:
+                    json.dump(self.reports[sha], f)
+                print(f'Writing -> {sha}.json\n')
 
-@timing
+# @timing
 def main():
     print('''
         
@@ -201,7 +206,7 @@ def main():
     parser.add_argument('-k', '--key', metavar='', required=True, help="REQUIRED API Key")
     parser.add_argument('-f', '--force', action='store_true', help="Force re-upload")
     args = parser.parse_args()
-    print(vars(args))
+    # print(vars(args))
 
     if len(sys.argv) < 2:
         parser.print_usage()
