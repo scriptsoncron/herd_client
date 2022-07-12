@@ -4,7 +4,7 @@ The script simplifies interacting with the HERD API for detonating files within 
 
 Slide into our DMs [@HerdSecurity](https://twitter.com/HerdSecurity) for API access 
 
----
+
 ## Install
 ```
 git clone https://github.com/scriptsoncron/herd_client
@@ -13,7 +13,7 @@ python3 -m venv herd_client && cd $_
 
 python3 -m pip install -r requirements.txt
 ```
----
+
 ## Flags
 ```
 Arguments:
@@ -24,7 +24,6 @@ Arguments:
   -o, --output      Writes results into separate json files (<sha>.json)
   -k , --key        REQUIRED API Key
 ```
----
 
 ## Examples
 **Detonate File**
