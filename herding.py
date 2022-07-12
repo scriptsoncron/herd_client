@@ -71,13 +71,9 @@ class Herding:
 
     async def file_upload(self):
         semaphore = asyncio.Semaphore(self.PARALLEL_REQUESTS)
-        # session = aiohttp.ClientSession(connector=self.conn)
         session = aiohttp.ClientSession()
 
         if self.search_results['missing']:
-            # forced upload wont show up in missing
-            # need to update that
-
             print('files to upload:\n\t', '\n\t'.join([x[1] for x in self.search_results['missing']]))
             print()
 
@@ -103,7 +99,6 @@ class Herding:
     def detonate(self):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.file_upload())
-        # self.conn.close()
 
         if self.upload_failed:
             print(f"\nUpload fails\n\t{self.upload_failed}")
@@ -113,8 +108,6 @@ class Herding:
         print(summary)
 
     async def hash_lookup(self):
-        # semaphore = asyncio.Semaphore(self.PARALLEL_REQUESTS)
-        # session = aiohttp.ClientSession(connector=self.conn)
         session = aiohttp.ClientSession()
 
         async def get(sha):
