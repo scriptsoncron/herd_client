@@ -1,6 +1,6 @@
-# HERD CLI Tool 
+# HERD Python (3.8+) Client
 
-The script (Python 3.8+) simplifies interacting with the HERD API for uploading files, searching by SHA256 hashes, and downloading reports. **ONLY SHA256 SUPPORTED**.
+The script simplifies interacting with the HERD API for uploading files, searching by SHA256 hashes, and downloading reports. **ONLY SHA256 SUPPORTED**.
 
 DM for API access [@HerdSecurity](https://twitter.com/HerdSecurity)
 
