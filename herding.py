@@ -109,7 +109,6 @@ class Herding:
         session = aiohttp.ClientSession()
 
         async def get(sha):
-            # async with semaphore:
             print(f'[+] hash lookup: {sha[0]}')
             async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}',
                                    ssl=False, headers=self.headers) as response:
@@ -136,7 +135,6 @@ class Herding:
     def search(self):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.hash_lookup())
-        # self.conn.close()
 
         print(f"\n[+] Searched {len(self.sha_list)} SHA256 and {len(self.search_results['found'])} found\n")
 

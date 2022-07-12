@@ -41,9 +41,16 @@ herding.py -k <key> -x Installer.exe -f
 herding.py -k <key> -x samples/ 
 ```
 
-**Check Results**
+**Search Results**
 ```
+# single sha256
 herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f
+
+# list of sha256
+herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f, 19b0a8993f4c64d143fa7f4e254064cb305612199e531635e864eda60e5fa83
+
+# file containing sha256 (newline delimited)
+herding.py -k <key> -s hashes.txt
 ```
 
 **Download (All) Results**
