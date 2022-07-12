@@ -7,7 +7,9 @@ DM for API access [@HerdSecurity](https://twitter.com/HerdSecurity)
 ---
 ## Install
 ```
-git clone https://github.com/scriptsoncron/cli_tool
+git clone https://github.com/scriptsoncron/herd_client
+
+python3 -m venv herd_client && cd $_
 
 python3 -m pip install -r requirements.txt
 ```
