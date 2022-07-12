@@ -80,7 +80,7 @@ class Herding:
 
                     print(f'[+] uploading: {sha[1]}')
                     try:
-                        async with session.post(f'https://api.herdsecurity.co/detonate?force={self.force}', ssl=False,
+                        async with session.post(f'https://api.herdsecurity.co/detonate?force={self.force}', ssl=True,
                                                 data={'file': open(sha[1], 'rb')}, headers=self.headers) as response:
                             try:
                                 obj = json.loads(await response.read())
@@ -111,7 +111,7 @@ class Herding:
         async def get(sha):
             print(f'[+] hash lookup: {sha[0]}')
             async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}',
-                                   ssl=False, headers=self.headers) as response:
+                                   ssl=True, headers=self.headers) as response:
                 try:
                     obj = json.loads(await response.read())
                     if 'error' not in obj:
