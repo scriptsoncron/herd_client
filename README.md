@@ -19,7 +19,7 @@ Arguments:
 
 **Detonate File**
 ```
-python herding.py -k <key> -x 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f.exe
+python herding.py -k <key> -x Installer.exe
 ```
 
 **Detonate Directory (of files)**
