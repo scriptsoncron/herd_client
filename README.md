@@ -1,6 +1,6 @@
 # HERD Python (3.8+) Client
 
-The script simplifies interacting with the HERD API for detonating files within the HERD sandbox, searching for results by a SHA256 hash, and downloading sandbox reports. **ONLY SHA256 SUPPORTED**.
+The script simplifies interacting with the HERD API for detonating files within the high volume, scalable HERD sandbox, searching for results by a SHA256 hash, and downloading sandbox reports. **ONLY SHA256 SUPPORTED**.
 
 Slide into our DMs [@HerdSecurity](https://twitter.com/HerdSecurity) for API access 
 

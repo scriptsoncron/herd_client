@@ -3,6 +3,7 @@
 import sys
 import os
 import json
+import requests
 import asyncio
 import aiohttp
 import time
@@ -52,11 +53,12 @@ class Herding:
             self.force = 'true'
         else:
             self.force = 'false'
-        self.search_results = {"found": [], "missing": []}
+        self.search_results = {"found": [], "missing": [], "missing_large": []}
         self.upload_results = {}
         self.upload_failed = {}
         self.reports = {}
         self.sha_list = []
+        self.large_sha_list = []
 
     def check_signed(self):
         if '.herd' in os.listdir(os.path.expanduser('~')):
@@ -68,7 +70,7 @@ class Herding:
                 f.write(self.token)
 
     async def file_upload(self):
-        semaphore = asyncio.Semaphore(self.PARALLEL_REQUESTS)
+        # semaphore = asyncio.Semaphore(self.PARALLEL_REQUESTS)
         session = aiohttp.ClientSession()
 
         if self.search_results['missing']:
@@ -76,21 +78,59 @@ class Herding:
             print()
 
             async def get(sha):
-                async with semaphore:
-
-                    print(f'[+] uploading: {sha[1]}')
-                    try:
-                        async with session.post(f'https://api.herdsecurity.co/detonate?force={self.force}', ssl=True,
-                                                data={'file': open(sha[1], 'rb')}, headers=self.headers) as response:
-                            try:
-                                obj = json.loads(await response.read())
-                                self.upload_results[sha[1]] = obj
-                            except json.decoder.JSONDecodeError:
-                                self.upload_failed[sha[1]] = response.read()
-                    except:
-                        self.upload_failed[sha[0]] = {'error': sys.exc_info()}
+                print(f'[+] uploading: {sha[1]}')
+                try:
+                    async with session.post(f'https://api.herdsecurity.co/detonate?force={self.force}', ssl=True,
+                                            data={'file': open(sha[1], 'rb')}, headers=self.headers) as response:
+                        try:
+                            obj = json.loads(await response.read())
+                            self.upload_results[sha[1]] = obj
+                        except json.decoder.JSONDecodeError:
+                            self.upload_failed[sha[1]] = response.read()
+                except:
+                    self.upload_failed[sha[0]] = {'error': sys.exc_info()}
 
             await asyncio.gather(*(get(sha) for sha in self.search_results['missing']))
+        
+        if self.search_results['missing_large']:
+            print('files to upload:\n\t', '\n\t'.join([x[1] for x in self.search_results['missing_large']]))
+            print()
+
+            # pre-signed urls
+            files = []
+            for s in self.search_results['missing_large']:
+                files.append(s[2])
+            
+            data = {"key": files}
+            r = requests.post('https://api.herdsecurity.co/signify', json=data, headers=self.headers)
+            pre_urls = r.json()['urls']
+
+            url_set = []
+            for url in pre_urls:
+                file_name = url['fields']['key']
+                for s in self.search_results['missing_large']:
+                    if s[2] == file_name:
+                        # sha, full path, url
+                        url_set.append((s[0], s[1], url['url'], url['fields']))
+
+            async def get_large(_set):
+                print(f'[+] uploading: {_set[1]}')
+                try:
+                    _set[3]['file'] = open(_set[1], 'rb')
+                    async with session.post(_set[2], ssl=True, data=_set[3]) as response:
+                        try:
+                            # obj = json.loads(await response.read())
+                            obj = await response
+                            if response.status == 204:
+                                self.upload_results[_set[0]] = obj
+                            else:
+                                self.upload_failed[_set[1]] = [response.status, response]
+                        except:
+                            self.upload_failed[_set[1]] = {'error': sys.exc_info()}
+                except:
+                    self.upload_failed[_set[1]] = {'error': sys.exc_info()}
+
+            await asyncio.gather(*(get_large(_set) for _set in url_set))
         await session.close()
 
     # @timing
@@ -129,6 +169,29 @@ class Herding:
                     print('Error: ', await response.read())
 
         await asyncio.gather(*(get(sha) for sha in self.sha_list))
+        # await session.close()
+
+        async def get_large(sha):
+            print(f'[+] hash lookup: {sha[0]}')
+            async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}',
+                                   ssl=True, headers=self.headers) as response:
+                try:
+                    obj = json.loads(await response.read())
+                    if 'error' not in obj:
+                        if 'message' in obj:
+                            self.reports[sha[0]] = obj
+                        else:
+                            if self.force == 'true':
+                                self.search_results['missing_large'].append(sha)
+                            else:
+                                self.search_results['found'].append(sha[0])
+                                self.reports[sha[0]] = obj
+                    else:
+                        self.search_results['missing_large'].append(sha)
+                except json.decoder.JSONDecodeError:
+                    print('Error: ', await response.read())
+
+        await asyncio.gather(*(get_large(sha) for sha in self.large_sha_list))
         await session.close()
 
     # @timing
@@ -145,7 +208,10 @@ class Herding:
                 self.path = self.path[:-1]
             for root, dirs, files in os.walk(self.path, topdown=False):
                 for file in files:
-                    self.sha_list.append((sha256sum(f"{root}/{file}"), f"{root}/{file}"))
+                    if os.path.getsize(f"{root}/{file}") >= 6000000:
+                        self.large_sha_list.append((sha256sum(f"{root}/{file}"), f"{root}/{file}", file))
+                    else:
+                        self.sha_list.append((sha256sum(f"{root}/{file}"), f"{root}/{file}"))
         # path to file
         elif os.path.isfile(self.path):
             try:
@@ -156,7 +222,10 @@ class Herding:
                     else:
                         self.sha_list.append((sha256sum(self.path), self.path))
             except:
-                self.sha_list.append((sha256sum(self.path), self.path))
+                if os.path.getsize(self.path) >= 6000000:
+                    self.large_sha_list.append((sha256sum(self.path), self.path, self.path.split('/')[-1]))
+                else:
+                    self.sha_list.append((sha256sum(self.path), self.path))
         # string input
         else:
             # list of sha256
