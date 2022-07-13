@@ -13,6 +13,7 @@ import argparse
 import barn
 import random
 import secrets
+import re
 
 
 def timing(f):
@@ -149,11 +150,12 @@ class Herding:
         session = aiohttp.ClientSession()
 
         async def get(sha):
-            print(f'[+] hash lookup: {sha[0]}')
+            print(f'[+] hash lookup: {sha[0]} {self._type}')
             async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}',
                                    ssl=True, headers=self.headers) as response:
                 try:
-                    obj = json.loads(await response.read())
+                    r = await response.read()
+                    obj = json.loads(r)
                     if 'error' not in obj:
                         if 'message' in obj:
                             self.reports[sha[0]] = obj
@@ -166,7 +168,8 @@ class Herding:
                     else:
                         self.search_results['missing'].append(sha)
                 except json.decoder.JSONDecodeError:
-                    print('Error: ', await response.read())
+                    res = re.search(r'<title>(.*?)<\/title>', r.decode('utf-8')).group(1)
+                    print('Error: ', res)
 
         await asyncio.gather(*(get(sha) for sha in self.sha_list))
         # await session.close()
@@ -176,7 +179,8 @@ class Herding:
             async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}',
                                    ssl=True, headers=self.headers) as response:
                 try:
-                    obj = json.loads(await response.read())
+                    r = await response.read()
+                    obj = json.loads(r)
                     if 'error' not in obj:
                         if 'message' in obj:
                             self.reports[sha[0]] = obj
@@ -189,7 +193,8 @@ class Herding:
                     else:
                         self.search_results['missing_large'].append(sha)
                 except json.decoder.JSONDecodeError:
-                    print('Error: ', await response.read())
+                    res = re.search(r'<title>(.*?)<\/title>', r.decode('utf-8')).group(1)
+                    print('Error: ', res)
 
         await asyncio.gather(*(get_large(sha) for sha in self.large_sha_list))
         await session.close()
@@ -266,7 +271,7 @@ def main():
     parser.add_argument('-x', '--detonate', metavar='', help="Input: file, directory")
     parser.add_argument('-s', '--search', metavar='', help="Search by a single SHA, list of SHAs, file of SHAs newline delimited, or by 'last' for last uploaded files")
     list_of_choices = ["all", "static", "dynamic", "emulation"]
-    parser.add_argument('-t', '--type', metavar='', help='Output options: all, static, dynamic, emulation; Default: all', default='all', choices=list_of_choices)
+    parser.add_argument('-t', '--type', metavar='', help='Output options: all, static, dynamic, emulation; Default: all', default="all", choices=list_of_choices)
     parser.add_argument('-o', '--output', action='store_true', help='Writes results into separate json files (<sha>.json)')
     parser.add_argument('-k', '--key', metavar='', required=True, help="REQUIRED API Key")
     parser.add_argument('-f', '--force', action='store_true', help="Force re-upload")
