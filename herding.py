@@ -8,12 +8,9 @@ import asyncio
 import aiohttp
 import time
 import hashlib
-from datetime import datetime
 import argparse
-import barn
-import random
-import secrets
 import re
+import logging
 
 
 def timing(f):
@@ -21,10 +18,8 @@ def timing(f):
         time1 = time.time()
         ret = f(*args, **kwargs)
         time2 = time.time()
-        print('\n{:s} function took {:.3f} s'.format(f.__name__, (time2 - time1)))
-
+        logging.debug('{:s} function took {:.3f} s'.format(f.__name__, (time2 - time1)))
         return ret
-
     return wrap
 
 
@@ -37,49 +32,133 @@ def sha256sum(path):
 
 class Herding:
     def __init__(self, **kwargs):
-        # Initialize connection pool
-        self.check_signed()
         self.conn = aiohttp.TCPConnector(limit_per_host=100, limit=0, ttl_dns_cache=300)
-        self.PARALLEL_REQUESTS = 100
         self.token = kwargs.get('key')
-        self.headers = {"X-API-Key": self.token}
-
+        self.store = kwargs.get('output', False)
         self._type = kwargs.get('type')
-        if kwargs.get('detonate'):
-            self.path = kwargs.get('detonate')
-        else:
-            self.path = kwargs.get('search')
+        self.force = kwargs.get('force', False)
+        self.action = kwargs.get('detonate')
+        self.input = kwargs.get('input')
 
-        if kwargs.get('force'):
-            self.force = 'true'
-        else:
-            self.force = 'false'
-        self.search_results = {"found": [], "missing": [], "missing_large": []}
+        self.headers = {"X-API-Key": self.token}
+        self.shas = {"normal": [], "large": [], "all": []}
+        self.results = {"normal": {"missing": [], "found": []}, "large": {"missing": [], "found": []}}
+        self.search_errors = []
         self.upload_results = {}
         self.upload_failed = {}
         self.reports = {}
-        self.sha_list = []
-        self.large_sha_list = []
 
-    def check_signed(self):
-        if '.herd' in os.listdir(os.path.expanduser('~')):
-            with open(f"{os.path.expanduser('~')}/.herd", 'r') as f:
-                self.token = f.read()
+        self.gather_triage_list()
+        self.search()
+        if self.action:
+            self.detonate()
+        
+        if self.store:
+            json.dump(self.reports, open(f"{list(self.reports.keys())[0]}.json", 'w'))
+            # self.report()
+
+    @timing
+    def gather_triage_list(self):
+        # list of file paths in directories
+        if os.path.isdir(self.input):
+            if self.input.endswith('/'):
+                self.input = self.input[:-1]
+            for root, dirs, files in os.walk(self.input, topdown=False):
+                for file in files:
+                    if os.path.getsize(f"{root}/{file}") >= 6000000:
+                        self.shas['large'].append((sha256sum(f"{root}/{file}"), f"{root}/{file}", file))
+                    else:
+                        self.shas['normal'].append((sha256sum(f"{root}/{file}"), f"{root}/{file}"))
+        # path to file
+        elif os.path.isfile(self.input):
+            try:
+                with open(self.input) as f:
+                    shas = f.read().splitlines()
+                    if len(shas[0]) == 64:
+                        self.shas['normal'].extend([(x, None) for x in shas])
+                    else:
+                        self.shas['normal'].append((sha256sum(self.input), self.input))
+            except:
+                if os.path.getsize(self.input) >= 6000000:
+                    self.shas['large'].append((sha256sum(self.input), self.input, self.input.split('/')[-1]))
+                else:
+                    self.shas['normal'].append((sha256sum(self.input), self.input))
+        # string input
         else:
-            with open(f"{os.path.expanduser('~')}/.herd", 'w') as f:
-                self.token = secrets.token_urlsafe()
-                f.write(self.token)
+            # list of sha256
+            if ',' in self.input:
+                self.shas['normal'].extend([(x, None) for x in self.input.replace(' ', '').split(',')])
+            elif self.input is None:
+                with open('.last_upload', 'r') as f:
+                    self.shas['normal'].extend([(x.split(',')[0], x.split(',')[1]) for x in f.read().splitlines()])
+            # single sha256
+            else:
+                self.shas['normal'].append((self.input, None))
 
-    async def file_upload(self):
-        # semaphore = asyncio.Semaphore(self.PARALLEL_REQUESTS)
+    @timing
+    def search(self):
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.hash_lookup())
+
+        searched = len(self.shas['normal']) + len(self.shas['large'])
+        found = len(self.results['normal']['found']) + len(self.results['large']['found'])
+        print(f"\n[+] Searched {searched} SHA256 and {found} found\n")
+
+    async def hash_lookup(self):
         session = aiohttp.ClientSession()
 
-        if self.search_results['missing']:
-            print('files to upload:\n\t', '\n\t'.join([x[1] for x in self.search_results['missing']]))
-            print()
+        async def get(sha, size):
+            logging.info(f'hash lookup: {sha[0]} {self._type}')
+            if self.store:
+                action = 'report'
+            else:
+                action = 'status'
+            async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}&action={action}',
+                                   ssl=True, headers=self.headers) as response:
+                try:
+                    r = await response.read()
+                    obj = json.loads(r)
+                    logging.debug(f'lookup response: {obj}')
+                    if 'error' in obj:
+                        logging.warning(f"response error: {obj['error']}")
+                    else:
+                        if self.force:
+                            self.results[size]['missing'].append(sha)
+                        else:
+                            if obj['status']['reported'] == 0:
+                                self.results[size]['missing'].append(sha)
+                            else:
+                                self.results[size]['found'].append(sha[0])
+                                if action == 'report':
+                                    self.reports[sha[0]] = obj['dump']
 
+                except json.decoder.JSONDecodeError:
+                    res = re.search(r'<title>(.*?)<\/title>', r.decode('utf-8')).group(1)
+                    logging.warning(f'hash lookup error: {res}')
+
+        await asyncio.gather(*(get(sha, 'normal') for sha in self.shas['normal']))
+        await asyncio.gather(*(get(sha, 'large') for sha in self.shas['large']))
+        await session.close()
+    
+    @timing
+    def detonate(self):
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.file_upload())
+
+        if self.upload_failed:
+            logging.info(f"Upload fails :: {self.upload_failed}")
+
+        uploaded = len(self.results['normal']['missing']) + len(self.results['large']['missing'])
+        print(f"\n[+] Uploaded {uploaded} requests with {len(self.upload_results)} success\n")
+        for x in self.upload_results:
+            logging.info(f"uploaded {x} :: {self.upload_results[x]}")
+    
+    async def file_upload(self):
+        session = aiohttp.ClientSession()
+
+        if self.results['normal']['missing']:
             async def get(sha):
-                print(f'[+] uploading: {sha[1]}')
+                logging.info(f'uploading: {sha[1]}')
                 try:
                     async with session.post(f'https://api.herdsecurity.co/detonate?force={self.force}', ssl=True,
                                             data={'file': open(sha[1], 'rb')}, headers=self.headers) as response:
@@ -91,15 +170,12 @@ class Herding:
                 except:
                     self.upload_failed[sha[0]] = {'error': sys.exc_info()}
 
-            await asyncio.gather(*(get(sha) for sha in self.search_results['missing']))
+            await asyncio.gather(*(get(sha) for sha in self.results['normal']['missing']))
         
-        if self.search_results['missing_large']:
-            print('files to upload:\n\t', '\n\t'.join([x[1] for x in self.search_results['missing_large']]))
-            print()
-
+        if self.results['large']['missing']:
             # pre-signed urls
             files = []
-            for s in self.search_results['missing_large']:
+            for s in self.results['large']['missing']:
                 files.append(s[2])
             
             data = {"key": files}
@@ -109,18 +185,17 @@ class Herding:
             url_set = []
             for url in pre_urls:
                 file_name = url['fields']['key']
-                for s in self.search_results['missing_large']:
+                for s in self.results['large']['missing']:
                     if s[2] == file_name:
                         # sha, full path, url
                         url_set.append((s[0], s[1], url['url'], url['fields']))
 
             async def get_large(_set):
-                print(f'[+] uploading: {_set[1]}')
+                logging.info(f'uploading: {_set[1]}')
                 try:
                     _set[3]['file'] = open(_set[1], 'rb')
                     async with session.post(_set[2], ssl=True, data=_set[3]) as response:
                         try:
-                            # obj = json.loads(await response.read())
                             obj = await response
                             if response.status == 204:
                                 self.upload_results[_set[0]] = obj
@@ -134,174 +209,26 @@ class Herding:
             await asyncio.gather(*(get_large(_set) for _set in url_set))
         await session.close()
 
-    # @timing
-    def detonate(self):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.file_upload())
 
-        if self.upload_failed:
-            print(f"\nUpload fails\n\t{self.upload_failed}")
-
-        print(f"\nUploaded {len(self.search_results['missing'])} requests with {len(self.upload_results)}")
-        summary = ''.join(f"\t{x} :: {self.upload_results[x]}\n" for x in self.upload_results)
-        print(summary)
-
-    async def hash_lookup(self):
-        session = aiohttp.ClientSession()
-
-        async def get(sha):
-            print(f'[+] hash lookup: {sha[0]} {self._type}')
-            async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}',
-                                   ssl=True, headers=self.headers) as response:
-                try:
-                    r = await response.read()
-                    obj = json.loads(r)
-                    if 'error' not in obj:
-                        if 'message' in obj:
-                            self.reports[sha[0]] = obj
-                        else:
-                            if self.force == 'true':
-                                self.search_results['missing'].append(sha)
-                            else:
-                                self.search_results['found'].append(sha[0])
-                                self.reports[sha[0]] = obj
-                    else:
-                        self.search_results['missing'].append(sha)
-                except json.decoder.JSONDecodeError:
-                    res = re.search(r'<title>(.*?)<\/title>', r.decode('utf-8')).group(1)
-                    print('Error: ', res)
-
-        await asyncio.gather(*(get(sha) for sha in self.sha_list))
-        # await session.close()
-
-        async def get_large(sha):
-            print(f'[+] hash lookup: {sha[0]}')
-            async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}',
-                                   ssl=True, headers=self.headers) as response:
-                try:
-                    r = await response.read()
-                    obj = json.loads(r)
-                    if 'error' not in obj:
-                        if 'message' in obj:
-                            self.reports[sha[0]] = obj
-                        else:
-                            if self.force == 'true':
-                                self.search_results['missing_large'].append(sha)
-                            else:
-                                self.search_results['found'].append(sha[0])
-                                self.reports[sha[0]] = obj
-                    else:
-                        self.search_results['missing_large'].append(sha)
-                except json.decoder.JSONDecodeError:
-                    res = re.search(r'<title>(.*?)<\/title>', r.decode('utf-8')).group(1)
-                    print('Error: ', res)
-
-        await asyncio.gather(*(get_large(sha) for sha in self.large_sha_list))
-        await session.close()
-
-    # @timing
-    def search(self):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.hash_lookup())
-
-        print(f"\n[+] Searched {len(self.sha_list)} SHA256 and {len(self.search_results['found'])} found\n")
-
-    def gather_triage_list(self):
-        # list of file paths in directories
-        if os.path.isdir(self.path):
-            if self.path.endswith('/'):
-                self.path = self.path[:-1]
-            for root, dirs, files in os.walk(self.path, topdown=False):
-                for file in files:
-                    if os.path.getsize(f"{root}/{file}") >= 6000000:
-                        self.large_sha_list.append((sha256sum(f"{root}/{file}"), f"{root}/{file}", file))
-                    else:
-                        self.sha_list.append((sha256sum(f"{root}/{file}"), f"{root}/{file}"))
-        # path to file
-        elif os.path.isfile(self.path):
-            try:
-                with open(self.path) as f:
-                    shas = f.read().splitlines()
-                    if len(shas[0]) == 64:
-                        self.sha_list.extend([(x, None) for x in shas])
-                    else:
-                        self.sha_list.append((sha256sum(self.path), self.path))
-            except:
-                if os.path.getsize(self.path) >= 6000000:
-                    self.large_sha_list.append((sha256sum(self.path), self.path, self.path.split('/')[-1]))
-                else:
-                    self.sha_list.append((sha256sum(self.path), self.path))
-        # string input
-        else:
-            # list of sha256
-            if ',' in self.path:
-                self.sha_list.extend([(x, None) for x in self.path.replace(' ', '').split(',')])
-            elif self.path is None:
-                with open('.last_upload', 'r') as f:
-                    self.sha_list.extend([(x.split(',')[0], x.split(',')[1]) for x in f.read().splitlines()])
-            # single sha256
-            else:
-                self.sha_list.append((self.path, None))
-
-    def write(self):
-        for sha in self.reports:
-            if 'message' in self.reports[sha]:
-                if self.reports[sha]['message'] == 'Forbidden':
-                    print('[-] Wrong API Key\n')
-            else:
-                with open(f'{sha}.json', 'w') as f:
-                    json.dump(self.reports[sha], f)
-                print(f'Writing -> {sha}.json\n')
-
-# @timing
 def main():
-    print('''
-        
-    ██╗  ██╗███████╗██████╗ ██████╗      ██████╗██╗     ██╗    ████████╗ ██████╗  ██████╗ ██╗     
-    ██║  ██║██╔════╝██╔══██╗██╔══██╗    ██╔════╝██║     ██║    ╚══██╔══╝██╔═══██╗██╔═══██╗██║     
-    ███████║█████╗  ██████╔╝██║  ██║    ██║     ██║     ██║       ██║   ██║   ██║██║   ██║██║     
-    ██╔══██║██╔══╝  ██╔══██╗██║  ██║    ██║     ██║     ██║       ██║   ██║   ██║██║   ██║██║     
-    ██║  ██║███████╗██║  ██║██████╔╝    ╚██████╗███████╗██║       ██║   ╚██████╔╝╚██████╔╝███████╗
-    ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═════╝      ╚═════╝╚══════╝╚═╝       ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝
-                                                                                                  
-    ''')
-    print(random.choice([barn.cow_1, barn.cow_2, barn.cow_3])())
-
     parser = argparse.ArgumentParser(description='CLI tool to mass upload and search the HERD SANDBOX')
-    parser.add_argument('-x', '--detonate', metavar='', help="Input: file, directory")
-    parser.add_argument('-s', '--search', metavar='', help="Search by a single SHA, list of SHAs, file of SHAs newline delimited, or by 'last' for last uploaded files")
-    list_of_choices = ["all", "static", "dynamic", "emulation"]
-    parser.add_argument('-t', '--type', metavar='', help='Output options: all, static, dynamic, emulation; Default: all', default="all", choices=list_of_choices)
+    parser.add_argument('-x', '--detonate',help="Detonate file(s); otherwise only search is performed", action='store_true')
+    parser.add_argument('-i', '--input', required=True, help="path to directory/file, sha256, or list of sha256")
+    list_of_reports = ["all", "static", "dynamic", "emulation"]
+    parser.add_argument('-t', '--type', help='Output options: all, static, dynamic, emulation; Default: all', default="all", choices=list_of_reports)
     parser.add_argument('-o', '--output', action='store_true', help='Writes results into separate json files (<sha>.json)')
-    parser.add_argument('-k', '--key', metavar='', required=True, help="REQUIRED API Key")
+    parser.add_argument('-k', '--key', required=True, help="REQUIRED API Key")
     parser.add_argument('-f', '--force', action='store_true', help="Force re-upload")
+    parser.add_argument('-d', '--debug', help="Print lots of debugging statements", action="store_const", dest="loglevel", const=logging.DEBUG,default=logging.WARNING)
+    parser.add_argument('-v', '--verbose', help="Be verbose", action="store_const", dest="loglevel", const=logging.INFO)
     args = parser.parse_args()
-    # print(vars(args))
+    logging.basicConfig(level=args.loglevel)
 
     if len(sys.argv) < 2:
         parser.print_usage()
         sys.exit(1)
-
-    run = Herding(**vars(args))
-    run.gather_triage_list()
-    if vars(args)['detonate']:
-        run.search()
-        run.detonate()
-        if run.sha_list:
-            d = datetime.today().strftime('%Y-%m-%d_%H:%M:%S')
-            with open(f'.last_upload', 'w') as f:
-                for x in run.sha_list:
-                    f.write(f"{x[0]},{x[1]}" + '\n')
-            if vars(args)['output']:
-                run.write()
-    elif vars(args)['search']:
-        run.search()
-        if run.reports:
-            if vars(args)['output']:
-                run.write()
-    else:
-        sys.exit()
-
+    
+    Herding(**vars(args))
 
 if __name__ == "__main__":
     main()
