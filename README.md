@@ -17,54 +17,56 @@ python3 -m pip install -r requirements.txt
 ## Flags
 ```
 Arguments:
-  -h, --help        show this help message and exit
-  -x , --detonate   Input: file, directory
-  -s , --search     Search by a single SHA, list of SHAs, file of SHAs newline delimited, or by 'last' for last uploaded files
-  -t , --type       Output options: all, static, dynamic, emulation; Default: all
-  -o, --output      Writes results into separate json files (<sha>.json)
-  -k , --key        REQUIRED API Key
+  -h, --help         show this help message and exit
+  -x , --detonate    Detonate file(s); Otherwise only SEARCH is performed
+  -i INPUT, --input  Path to direcotry/file OR single SHA256 OR list of SHA256s
+  -t , --type        Output options: all, static, dynamic, emulation; Default: all
+  -o , --output      Writes results into separate json files (<sha>.json)
+  -k , --key         REQUIRED API Key
+  -d , --debug       Print lots of debugging statements
+  -v , --verbose     Be verbose
 ```
 
 ## Examples
 **Detonate File**
 ```
-herding.py -k <key> -x Installer.exe
+herding.py -k <key> -x -i Installer.exe
 ```
 
 **Detonate Directory (of files)**
 ```
-herding.py -k <key> -x samples/ 
+herding.py -k <key> -x -i samples/ 
 ```
 
 **Search Results**
 ```
 # single sha256
-herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f
+herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f
 
 # list of sha256
-herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f, 19b0a8993f4c64d143fa7f4e254064cb305612199e531635e864eda60e5fa83
+herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f, 19b0a8993f4c64d143fa7f4e254064cb305612199e531635e864eda60e5fa83
 
 # file containing sha256 (newline delimited)
-herding.py -k <key> -s hashes.txt
+herding.py -k <key> -i hashes.txt
 ```
 
 **Download (All) Results**
 > All output goes to a json file
 ```
-herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o
+herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o
 ```
 
 **Download ONLY Static Results**
 ```
-herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t static
+herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t static
 ```
 
 **Download ONLY Dynamic Results**
 ```
-herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t dynamic
+herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t dynamic
 ```
 
 **Download ONLY Emulation Results**
 ```
-herding.py -k <key> -s 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t emulation
+herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t emulation
 ```
