@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # HERD Python Client
 
 import sys
@@ -11,6 +12,9 @@ import hashlib
 import argparse
 import re
 import logging
+import configparser
+
+config = configparser.ConfigParser()
 
 
 def timing(f):
@@ -31,9 +35,9 @@ def sha256sum(path):
 
 
 class Herding:
-    def __init__(self, **kwargs):
+    def __init__(self, key, **kwargs):
         self.conn = aiohttp.TCPConnector(limit_per_host=100, limit=0, ttl_dns_cache=300)
-        self.token = kwargs.get('key')
+        self.token = key
         self.store = kwargs.get('output', False)
         self._type = kwargs.get('type')
         self.force = kwargs.get('force', False)
@@ -54,8 +58,10 @@ class Herding:
             self.detonate()
         
         if self.store:
-            json.dump(self.reports, open(f"{list(self.reports.keys())[0]}.json", 'w'))
-            # self.report()
+            print('[+] Reports written to current directory')
+            for sha in self.reports:
+                json.dump(self.reports[sha], open(f"{sha}.json", 'w'))
+                logging.info(f'Wrote {sha}.json')
 
     @timing
     def gather_triage_list(self):
@@ -217,18 +223,30 @@ def main():
     list_of_reports = ["all", "static", "dynamic", "emulation"]
     parser.add_argument('-t', '--type', help='Output options: all, static, dynamic, emulation; Default: all', default="all", choices=list_of_reports)
     parser.add_argument('-o', '--output', action='store_true', help='Writes results into separate json files (<sha>.json)')
-    parser.add_argument('-k', '--key', required=True, help="REQUIRED API Key")
     parser.add_argument('-f', '--force', action='store_true', help="Force re-upload")
     parser.add_argument('-d', '--debug', help="Print lots of debugging statements", action="store_const", dest="loglevel", const=logging.DEBUG,default=logging.WARNING)
     parser.add_argument('-v', '--verbose', help="Be verbose", action="store_const", dest="loglevel", const=logging.INFO)
     args = parser.parse_args()
     logging.basicConfig(level=args.loglevel)
 
+    if os.path.exists('config.ini'):
+        config.read('config.ini')
+        key = config['CREDS']['Key']
+    else:
+        key = input('API Key: ')
+        config['CREDS'] = {'Key': key}
+        with open('comfig.ini', 'w') as configfile:
+            config.write(configfile)
+
     if len(sys.argv) < 2:
         parser.print_usage()
         sys.exit(1)
     
-    Herding(**vars(args))
+    if key:
+        Herding(key, **vars(args))
+    else:
+        print('\n[-] Missing key in config.ini\n')
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

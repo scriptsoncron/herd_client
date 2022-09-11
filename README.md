@@ -22,7 +22,6 @@ Arguments:
   -i INPUT, --input  Path to direcotry/file OR single SHA256 OR list of SHA256s
   -t , --type        Output options: all, static, dynamic, emulation; Default: all
   -o , --output      Writes results into separate json files (<sha>.json)
-  -k , --key         REQUIRED API Key
   -d , --debug       Print lots of debugging statements
   -v , --verbose     Be verbose
 ```
