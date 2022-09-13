@@ -29,43 +29,43 @@ Arguments:
 ## Examples
 **Detonate File**
 ```
-herding.py -k <key> -x -i Installer.exe
+herding.py -x -i Installer.exe
 ```
 
 **Detonate Directory (of files)**
 ```
-herding.py -k <key> -x -i samples/ 
+herding.py -x -i samples/ 
 ```
 
 **Search Results**
 ```
 # single sha256
-herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f
+herding.py -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f
 
 # list of sha256
-herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f, 19b0a8993f4c64d143fa7f4e254064cb305612199e531635e864eda60e5fa83
+herding.py -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f, 19b0a8993f4c64d143fa7f4e254064cb305612199e531635e864eda60e5fa83
 
 # file containing sha256 (newline delimited)
-herding.py -k <key> -i hashes.txt
+herding.py -i hashes.txt
 ```
 
 **Download (All) Results**
 > All output goes to a json file
 ```
-herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o
+herding.py -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o
 ```
 
 **Download ONLY Static Results**
 ```
-herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t static
+herding.py -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t static
 ```
 
 **Download ONLY Dynamic Results**
 ```
-herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t dynamic
+herding.py -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t dynamic
 ```
 
 **Download ONLY Emulation Results**
 ```
-herding.py -k <key> -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t emulation
+herding.py -i 23aa3b623889c24203dc75cc3512288bc723e2747e5913bf86a559a25ae7ea3f -o -t emulation
 ```
