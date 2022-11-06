@@ -172,7 +172,7 @@ class Herding:
                             obj = json.loads(await response.read())
                             self.upload_results[sha[1]] = obj
                         except json.decoder.JSONDecodeError:
-                            self.upload_failed[sha[1]] = response.read()
+                            self.upload_failed[sha[1]] = await response.read()
                 except:
                     self.upload_failed[sha[0]] = {'error': sys.exc_info()}
 
@@ -202,11 +202,11 @@ class Herding:
                     _set[3]['file'] = open(_set[1], 'rb')
                     async with session.post(_set[2], ssl=True, data=_set[3]) as response:
                         try:
-                            obj = await response
+                            obj = await response.read()
                             if response.status == 204:
                                 self.upload_results[_set[0]] = obj
                             else:
-                                self.upload_failed[_set[1]] = [response.status, response]
+                                self.upload_failed[_set[1]] = [response.status, obj]
                         except:
                             self.upload_failed[_set[1]] = {'error': sys.exc_info()}
                 except:
@@ -221,7 +221,7 @@ def main():
     parser.add_argument('-x', '--detonate',help="Detonate file(s); otherwise only search is performed", action='store_true')
     parser.add_argument('-i', '--input', required=True, help="path to directory/file, sha256, or list of sha256")
     list_of_reports = ["all", "static", "dynamic", "emulation"]
-    parser.add_argument('-t', '--type', help='Output options: all, static, dynamic, emulation; Default: all', default="all", choices=list_of_reports)
+    parser.add_argument('-t', '--type', help='Output options: all, iocs_v1, static, dynamic, emulation; Default: all', default="iocs_v1", choices=list_of_reports)
     parser.add_argument('-o', '--output', action='store_true', help='Writes results into separate json files (<sha>.json)')
     parser.add_argument('-f', '--force', action='store_true', help="Force re-upload")
     parser.add_argument('-d', '--debug', help="Print lots of debugging statements", action="store_const", dest="loglevel", const=logging.DEBUG,default=logging.WARNING)
@@ -235,7 +235,7 @@ def main():
     else:
         key = input('API Key: ')
         config['CREDS'] = {'Key': key}
-        with open('comfig.ini', 'w') as configfile:
+        with open('config.ini', 'w') as configfile:
             config.write(configfile)
 
     if len(sys.argv) < 2:
