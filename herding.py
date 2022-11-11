@@ -38,12 +38,12 @@ class Herding:
     def __init__(self, key, **kwargs):
         self.conn = aiohttp.TCPConnector(limit_per_host=100, limit=0, ttl_dns_cache=300)
         self.token = key
-        self.store = kwargs.get('output', False)
+        self.store = kwargs.get('output')
         self._type = kwargs.get('type')
         self.force = kwargs.get('force', False)
         self.action = kwargs.get('detonate')
         self.input = kwargs.get('input')
-
+        self.private = kwargs.get('private', False)
         self.headers = {"X-API-Key": self.token}
         self.shas = {"normal": [], "large": [], "all": []}
         self.results = {"normal": {"missing": [], "found": []}, "large": {"missing": [], "found": []}}
@@ -57,11 +57,94 @@ class Herding:
         if self.action:
             self.detonate()
         
-        if self.store:
-            print('[+] Reports written to current directory')
-            for sha in self.reports:
-                json.dump(self.reports[sha], open(f"{sha}.json", 'w'))
-                logging.info(f'Wrote {sha}.json')
+        if self.reports:
+            if self.store == 'reader':
+                self.read_report()
+            elif self.store == 'file':
+                print('[+] Reports written to current directory')
+                for sha in self.reports:
+                    json.dump(self.reports[sha], open(f"{sha}.json", 'w'))
+                    logging.info(f'Wrote {sha}.json')
+
+    
+    def read_report(self):
+        while True:
+            try:
+                os.system('clear')
+                print('\n[+] Reading reports')
+                print('[+] Select report to read:')
+                c = 1
+                for sha in self.reports:
+                    print(f"\t{c}. {sha}")
+                    c += 1
+                i = input("\n[+] Choice [Enter to exit]: ")
+
+                if not i:
+                    break
+
+                index_choice = int(i) - 1
+                if index_choice < 0 or index_choice > len(self.reports):
+                    print('Invalid choice')
+                    continue
+
+                while True:
+                    os.system('clear')
+                    request_sha = list(self.reports.keys())[index_choice]
+                    cf = 1
+                    print("[+] Fields: ")
+                    for field in self.reports[request_sha]:
+                        print(f"\t{cf}. {field}")
+                        cf += 1
+                    print(f'\t{cf}. all')
+                    cf += 1
+                    print(f'\t{cf}. save')
+                    ii = input("\n[+] Choice [Enter to return]: ")
+
+                    if not ii:
+                        break
+                    
+                    if ii == 'all' or ii == str(cf-1):
+                        print('\n', json.dumps(self.reports[request_sha], indent=4), '\n')
+
+                    elif ii == 'save' or ii == str(cf):
+                        print(f'\nSaving data to {request_sha}.json')
+                        json.dump(self.reports[request_sha], open(f"{request_sha}.json", 'w'))
+
+                    else:
+                        try:
+                            new_i = int(ii)
+                        except:
+                            new_i = ii
+                        
+                        if not isinstance(new_i, int):
+                            print('\n[-] Invalid field\n')
+                        else:
+                            field_choice = int(new_i) - 1
+                            if field_choice < 0 or field_choice > len(self.reports[request_sha]):
+                                print('\n[-] Invalid field\n')
+                            else:
+                                key = list(self.reports[request_sha].keys())[field_choice]
+                                data = self.reports[request_sha][key]
+                                print(f'\nKEY: {key}')
+                                if data:
+                                    if isinstance(data, list):
+                                        if isinstance(data[0], dict):
+                                            for d in data:
+                                                print('\n', json.dumps(d, indent=4), '\n')
+                                        else:
+                                            print('\n\t', '\n\t'.join(data), '\n')
+                                    elif isinstance(data, dict):
+                                        print('\n', json.dumps(data, indent=4), '\n')
+                                    else:
+                                        print('\n\t', data, '\n')
+                                else:
+                                    print(f'\tEmpty T_T\n')
+                    input("Press Enter to continue...")
+
+                input("Press Enter to continue...")
+            except KeyboardInterrupt:
+                sys.exit()
+            
 
     @timing
     def gather_triage_list(self):
@@ -122,21 +205,24 @@ class Herding:
             async with session.get(f'https://api.herdsecurity.co/file?hash={sha[0]}&type={self._type}&action={action}',
                                    ssl=True, headers=self.headers) as response:
                 try:
-                    r = await response.read()
-                    obj = json.loads(r)
-                    logging.debug(f'lookup response: {obj}')
-                    if 'error' in obj:
-                        logging.warning(f"response error: {obj['error']}")
-                    else:
-                        if self.force:
-                            self.results[size]['missing'].append(sha)
+                    if response.status != 403:
+                        r = await response.read()
+                        obj = json.loads(r)
+                        logging.debug(f'lookup response: {obj}')
+                        if 'error' in obj:
+                            logging.warning(f"response error: {obj['error']}")
                         else:
-                            if obj['status']['reported'] == 0:
+                            if self.force:
                                 self.results[size]['missing'].append(sha)
                             else:
-                                self.results[size]['found'].append(sha[0])
-                                if action == 'report':
-                                    self.reports[sha[0]] = obj['dump']
+                                if obj['status']['reported'] == 0:
+                                    self.results[size]['missing'].append(sha)
+                                else:
+                                    self.results[size]['found'].append(sha[0])
+                                    if action == 'report':
+                                        self.reports[sha[0]] = obj['dump']
+                    else:
+                        logging.info(f"Forbidden: Incorrect API Key")
 
                 except json.decoder.JSONDecodeError:
                     res = re.search(r'<title>(.*?)<\/title>', r.decode('utf-8')).group(1)
@@ -157,7 +243,7 @@ class Herding:
         uploaded = len(self.results['normal']['missing']) + len(self.results['large']['missing'])
         print(f"\n[+] Uploaded {uploaded} requests with {len(self.upload_results)} success\n")
         for x in self.upload_results:
-            logging.info(f"uploaded {x} :: {self.upload_results[x]}")
+            print(f"uploaded {x} :: {self.upload_results[x]}")
     
     async def file_upload(self):
         session = aiohttp.ClientSession()
@@ -166,8 +252,9 @@ class Herding:
             async def get(sha):
                 logging.info(f'uploading: {sha[1]}')
                 try:
-                    async with session.post(f'https://api.herdsecurity.co/detonate?force={self.force}', ssl=True,
-                                            data={'file': open(sha[1], 'rb')}, headers=self.headers) as response:
+                    _file = open(sha[1], 'rb')
+                    async with session.post(f'https://api.herdsecurity.co/detonate?file={sha[1]}&force={self.force}&private={self.private}', ssl=True,
+                                            data=_file, headers=self.headers) as response:
                         try:
                             obj = json.loads(await response.read())
                             self.upload_results[sha[1]] = obj
@@ -222,20 +309,21 @@ def main():
     parser.add_argument('-i', '--input', required=True, help="path to directory/file, sha256, or list of sha256")
     list_of_reports = ["all", "static", "dynamic", "emulation"]
     parser.add_argument('-t', '--type', help='Output options: all, iocs_v1, static, dynamic, emulation; Default: all', default="iocs_v1", choices=list_of_reports)
-    parser.add_argument('-o', '--output', action='store_true', help='Writes results into separate json files (<sha>.json)')
+    parser.add_argument('-o', '--output', default='', choices=['', 'reader', 'file'], help='Return report to terminal or file')
     parser.add_argument('-f', '--force', action='store_true', help="Force re-upload")
     parser.add_argument('-d', '--debug', help="Print lots of debugging statements", action="store_const", dest="loglevel", const=logging.DEBUG,default=logging.WARNING)
     parser.add_argument('-v', '--verbose', help="Be verbose", action="store_const", dest="loglevel", const=logging.INFO)
+    parser.add_argument('-p', '--private', action='store_true', help="Reports are private")
     args = parser.parse_args()
     logging.basicConfig(level=args.loglevel)
 
-    if os.path.exists('config.ini'):
-        config.read('config.ini')
+    if os.path.exists(f'{os.path.expanduser("~")}/.herd.ini'):
+        config.read(f'{os.path.expanduser("~")}/.herd.ini')
         key = config['CREDS']['Key']
     else:
         key = input('API Key: ')
         config['CREDS'] = {'Key': key}
-        with open('config.ini', 'w') as configfile:
+        with open(f'{os.path.expanduser("~")}/.herd.ini', 'w') as configfile:
             config.write(configfile)
 
     if len(sys.argv) < 2:
@@ -245,7 +333,7 @@ def main():
     if key:
         Herding(key, **vars(args))
     else:
-        print('\n[-] Missing key in config.ini\n')
+        print('\n[-] Missing key in ~/.herd.ini\n')
         sys.exit(1)
 
 if __name__ == "__main__":
