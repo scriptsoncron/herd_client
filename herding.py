@@ -247,21 +247,23 @@ class Herding:
     
     async def file_upload(self):
         session = aiohttp.ClientSession()
+        semaphore = asyncio.Semaphore(100)
 
         if self.results['normal']['missing']:
             async def get(sha):
-                logging.info(f'uploading: {sha[1]}')
-                try:
-                    _file = open(sha[1], 'rb')
-                    async with session.post(f'https://api.herdsecurity.co/detonate?file={sha[1]}&force={self.force}&private={self.private}', ssl=True,
-                                            data=_file, headers=self.headers) as response:
-                        try:
-                            obj = json.loads(await response.read())
-                            self.upload_results[sha[1]] = obj
-                        except json.decoder.JSONDecodeError:
-                            self.upload_failed[sha[1]] = await response.read()
-                except:
-                    self.upload_failed[sha[0]] = {'error': sys.exc_info()}
+                async with semaphore:
+                    logging.info(f'uploading: {sha[1]}')
+                    try:
+                        _file = open(sha[1], 'rb')
+                        async with session.post(f'https://api.herdsecurity.co/detonate?file={sha[1]}&force={self.force}&private={self.private}', ssl=True,
+                                                data=_file, headers=self.headers) as response:
+                            try:
+                                obj = json.loads(await response.read())
+                                self.upload_results[sha[1]] = obj
+                            except json.decoder.JSONDecodeError:
+                                self.upload_failed[sha[1]] = await response.read()
+                    except:
+                        self.upload_failed[sha[0]] = {'error': sys.exc_info()}
 
             await asyncio.gather(*(get(sha) for sha in self.results['normal']['missing']))
         
